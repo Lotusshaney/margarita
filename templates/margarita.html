@@ -37,6 +37,9 @@
 		.backgrid th.branch-header {
 			overflow: visible;
 		}
+		#vw-grid-footer-td {
+			text-align:center;
+		}
 	</style>
 
 
@@ -76,13 +79,44 @@
 	<div class="modal-body">
 		<p>
 			<% if (depr) { %>
-				<span class="label label-warning">Deprecated</span>
+				<span title="Deprecated update product" class="label label-warning">Deprecated</span>
 				<br>
 			<% } %>
+			<% _.each(oscatalogs, function(osver) { %>
+				<span class="label label-info"><%= osver %></span>
+			<% }) %>
+			<br>
 			Product ID:
 			<strong><span style="font-family:monospace"><%= id %></span></strong>
 			<br>
 			Post Date: <%= PostDate %>
+			<br>
+			Config-Data:
+			<% if (fetchingconfig == true) { %>
+				<em>Checking...</em>
+			<% } else { %>
+				<% if (configdata == true) { %>
+					<span class="label label-warning">Yes</span>
+					&mdash;
+					<button type="button" class="btn btn-mini btn-danger removeConfigDataAction">
+						<span class="icon-white icon-remove"></span>
+						Remove
+					</button>
+				<% } else if (configdata == false) { %>
+					<span class="label label-info">No</span>
+				<% } else { %>
+					<em>Unknown</em>
+				<% } %>
+			<% } %>
+			<br>
+			<br>
+			<% _.each(packages, function(pkg) { %>
+				<a class="btn btn-mini btn-success" href="<%= pkg.url %>">
+					<span class="icon-white icon-download"></span>
+					<%= pkg.url.substring(pkg.url.lastIndexOf('/') + 1) %>
+					(<%= datasize(pkg.size) %>)
+				</a>
+			<% }) %>
 		</p>
 		<hr>
 		<% if (description) { %>
@@ -159,7 +193,19 @@
 <script id="cell-product" type="text/html">
 	<a href="#" class="toggle-info" title="Product ID: <%= id %>"><%= title %></a>
 	<% if (depr) { %>
-		<span class="label label-warning">Deprecated</span>
+		<span title="Deprecated update product" class="label label-warning">D</span>
+	<% } %>
+	<% if (configdata) { %>
+		<span title="Product marked as config-data" class="label label-warning">C</span>
+	<% } %>
+	<% if (oscatalogs.length > 2) { %>
+		<span class="label label-info"><%= oscatalogs[0] %></span>
+		&mdash;
+		<span class="label label-info"><%= oscatalogs[oscatalogs.length - 1] %></span>
+	<% } else { %>
+		<% _.each(oscatalogs, function(osver) { %>
+			<span class="label label-info"><%= osver %></span>
+		<% }) %>
 	<% } %>
 	<button class="toggle-info btn btn-mini" style="float:right;"><i class="icon-info-sign"></i></button>
 </script>
@@ -214,6 +260,19 @@
 		</button>
 	<% } %>
 <% } %>
+</script>
+
+<script id="vw-grid-footer" type="text/html">
+<tr>
+	<td id="vw-grid-footer-td" class="renderable" colspan="<%= colspan %>">
+		<span title="Showing <%= page %> updates on this page of <%= showing %> updates in this list of <%= total %> total updates">
+			Showing <%= showing %> of <%= total %> updates
+			<% if (showing < 1 && total >= 1) { %>
+				<strong>(common updates likely hidden and/or no branches exist)</strong>
+			<% } %>
+		</span>
+	</td>
+</tr>
 </script>
 
 <!-- Includes -->

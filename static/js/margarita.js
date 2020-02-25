@@ -27,7 +27,26 @@ var ProductChanges = Backbone.Collection.extend({
 });
 
 var Product = Backbone.Model.extend({
-	defaults: { queued: [], },
+	defaults: { queued: [], configdata: null, fetchingconfig: false },
+	removeConfigData: function () {
+		if (!this.get('configdata'))
+		{
+			console.log("no configdata to remove for " + this.get('id'));
+			return;
+		}
+
+		this.set({'fetchingconfig': true});
+
+		that = this;
+
+		$.ajax({
+			type: 'POST',
+			url: 'remove_config_data/' + this.get('id'),
+			success: function(result) {
+				that.set({'fetchingconfig': false, 'configdata': false});
+			}
+		});
+	}
 });
 
 var Products = Backbone.PageableCollection.extend({
@@ -64,6 +83,40 @@ var Products = Backbone.PageableCollection.extend({
 			this.models[0].__proto__.allBranches = this.allBranches;
 			this.models[0].__proto__.productChanges = this.productChanges;
 		}
+
+		var prod_ids_to_check = [];
+		_.each(this.models, function(model) {
+			if (!model.get('fetchingconfig') && model.get('configdata') == null) {
+				prod_ids_to_check.push(model.get('id'));
+				model.set('fetchingconfig', true);
+			}
+		});
+
+		if (prod_ids_to_check.length < 1)
+		{
+			return;
+		}
+
+		console.log('checking', prod_ids_to_check.length, 'products for config-data')
+
+		$.ajax({
+			type: 'POST',
+			url: 'config_data',
+			data: JSON.stringify(prod_ids_to_check),
+			dataType: 'json',
+			contentType: 'application/json; charset=UTF-8',
+			success: function(result) {
+				console.log('results for', _.keys(result).length, 'products for config-data')
+				_.each(_.keys(result), function(prod_id) {
+					// the filterCriteria object is the only object which has
+					// the complete unfiltered set of updates from reposado
+					// this model object only has the filtered and paginated
+					// results
+					var myModel = MargaritaApp.filterCriteria.shadowCollection.get(prod_id);
+					myModel.set({'fetchingconfig': false, 'configdata': result[prod_id]});
+				});
+			}
+		});
 	},
 });
 
@@ -149,9 +202,16 @@ var UpdateModalView = Backbone.Marionette.ItemView.extend({
 	template: '#vw-modal-update',
 	events: {
 		'click .closeAction': 'closeClicked',
+		'click .removeConfigDataAction': 'removeConfigData',
+	},
+	initialize: function() {
+		this.model.bind('change', this.render, this);
 	},
 	closeClicked: function () {
 		MargaritaApp.updateModal.hideModal();
+	},
+	removeConfigData: function () {
+		this.model.removeConfigData();
 	}
 });
 
@@ -245,6 +305,7 @@ var ProductCell = Backbone.Marionette.ItemView.extend({
 	initialize: function (options) {
 		// BackGrid cells require the column key
 		_.extend(this, _.pick(options, ['column']));
+		this.model.bind('change:configdata', this.render, this);
 	},
 	showInfo: function (ev) {
 		ev.preventDefault();
@@ -395,6 +456,37 @@ var BranchCell = Backbone.Marionette.ItemView.extend({
 	}
 });
 
+var UpdatesGridFooter = Backbone.Marionette.ItemView.extend({
+	tagName: 'tfoot',
+	template: '#vw-grid-footer',
+
+	initialize: function (options) {
+		this.columns = options.columns;
+		if (!(this.columns instanceof Backbone.Collection)) {
+			this.columns = new Backgrid.Columns(this.columns);
+		}
+
+		// XXX: yuck! shouldn't need to appeal to the top-level MargaritaApp
+
+		// render when different filter criteria has been selected
+		MargaritaApp.filterCriteria.bind('change', this.render);
+		// render when a different table page is selected
+		MargaritaApp.products.bind('reset', this.render);
+	},
+	serializeData: function() {
+		// XXX: yuck! shouldn't need to appeal to the top-level MargaritaApp
+
+		var serData = {
+			total: MargaritaApp.filterCriteria.shadowCollection.length,
+			showing: MargaritaApp.filterCriteria.products.fullCollection.length,
+			page: MargaritaApp.filterCriteria.products.length,
+			// required to set the colspan of the td within the tfoot element
+			colspan: this.columns.length,
+		};
+		return serData;
+	}
+});
+
 var UpdatesGridColumns = [{
 	name: 'title',
 	label: 'Software Update Product',
@@ -444,6 +536,7 @@ var UpdatesGrid = Backgrid.Grid.extend({
 
 		Backgrid.Grid.prototype.initialize.call(this, options);
 	},
+	footer: UpdatesGridFooter,
 });
 
 var ProgressBarView = Backbone.Marionette.ItemView.extend({
@@ -517,6 +610,13 @@ MargaritaApp.addInitializer(function () {
 
 	var newBranchFormView = new NewBranchFormView({el: $('#newbranch')});
 });
+
+function datasize (bytes) {
+	var units = ['bytes', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+	if (bytes == 0) return '0 ' + units[0];
+	var e = Math.floor(Math.log(bytes) / Math.log(1024));
+	return (bytes / Math.pow(1024, e)).toFixed(1) + ' ' + units[e];
+}
 
 /* Init */
 
